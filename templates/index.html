@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VIDEO → GIF CONVERTER</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --green: #00ff41;
+    --amber: #ffb000;
+    --bg: #0a0a0a;
+    --dim-green: #00a028;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--green);
+    font-family: 'Courier New', monospace;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    overflow: hidden;
+    position: relative;
+  }
+
+  /* Scanlines overlay */
+  body::after {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0, 0, 0, 0.15) 2px,
+      rgba(0, 0, 0, 0.15) 4px
+    );
+    pointer-events: none;
+    z-index: 100;
+  }
+
+  /* Vignette */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background: radial-gradient(ellipse at center, transparent 60%, rgba(0,0,0,0.85) 100%);
+    pointer-events: none;
+    z-index: 99;
+  }
+
+  @keyframes flicker {
+    0%, 100% { opacity: 1; }
+    92% { opacity: 1; }
+    93% { opacity: 0.85; }
+    94% { opacity: 1; }
+    96% { opacity: 0.9; }
+    97% { opacity: 1; }
+  }
+
+  @keyframes blink {
+    0%, 49% { opacity: 1; }
+    50%, 100% { opacity: 0; }
+  }
+
+  @keyframes pulse-border {
+    0%, 100% { box-shadow: 0 0 8px var(--green), 0 0 16px rgba(0,255,65,0.3); }
+    50% { box-shadow: 0 0 12px var(--green), 0 0 30px rgba(0,255,65,0.5); }
+  }
+
+  .screen {
+    animation: flicker 8s infinite;
+    width: 100%;
+    max-width: 680px;
+    padding: 2rem;
+    position: relative;
+    z-index: 1;
+  }
+
+  .terminal-box {
+    border: 1px solid var(--green);
+    box-shadow: 0 0 8px var(--green), 0 0 20px rgba(0,255,65,0.2), inset 0 0 20px rgba(0,255,65,0.03);
+    padding: 2rem;
+  }
+
+  .title {
+    text-align: center;
+    font-size: 1.6rem;
+    font-weight: bold;
+    letter-spacing: 0.3em;
+    text-shadow: 0 0 8px var(--green), 0 0 20px var(--green), 0 0 40px rgba(0,255,65,0.4);
+    margin-bottom: 0.5rem;
+  }
+
+  .subtitle {
+    text-align: center;
+    font-size: 0.7rem;
+    letter-spacing: 0.2em;
+    color: var(--dim-green);
+    margin-bottom: 2rem;
+  }
+
+  .divider {
+    border: none;
+    border-top: 1px solid var(--dim-green);
+    margin: 1.5rem 0;
+    box-shadow: 0 0 4px rgba(0,255,65,0.3);
+  }
+
+  /* Drop zone */
+  #drop-zone {
+    border: 1px dashed var(--green);
+    padding: 3rem 2rem;
+    text-align: center;
+    cursor: pointer;
+    position: relative;
+    transition: border-color 0.2s, box-shadow 0.2s;
+    box-shadow: 0 0 6px rgba(0,255,65,0.2);
+  }
+
+  #drop-zone:hover, #drop-zone.dragover {
+    border-color: var(--amber);
+    box-shadow: 0 0 12px rgba(255,176,0,0.4), inset 0 0 20px rgba(255,176,0,0.05);
+    color: var(--amber);
+    animation: pulse-border 1.5s ease-in-out infinite;
+  }
+
+  #drop-zone.dragover {
+    background: rgba(255,176,0,0.03);
+  }
+
+  .drop-icon {
+    font-size: 2rem;
+    display: block;
+    margin-bottom: 1rem;
+    text-shadow: 0 0 8px var(--green);
+  }
+
+  .drop-text {
+    font-size: 0.85rem;
+    letter-spacing: 0.15em;
+    line-height: 2;
+  }
+
+  .drop-sub {
+    font-size: 0.7rem;
+    color: var(--dim-green);
+    letter-spacing: 0.1em;
+    margin-top: 0.5rem;
+  }
+
+  #file-input {
+    display: none;
+  }
+
+  .cursor {
+    display: inline-block;
+    width: 0.6em;
+    height: 1em;
+    background: var(--green);
+    vertical-align: text-bottom;
+    animation: blink 1s step-end infinite;
+    box-shadow: 0 0 6px var(--green);
+  }
+
+  /* Status panel */
+  #status-panel {
+    background: rgba(0,255,65,0.03);
+    border: 1px solid var(--dim-green);
+    padding: 1rem;
+    min-height: 120px;
+    max-height: 200px;
+    overflow-y: auto;
+    font-size: 0.8rem;
+    line-height: 1.8;
+  }
+
+  #status-panel::-webkit-scrollbar {
+    width: 4px;
+  }
+  #status-panel::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  #status-panel::-webkit-scrollbar-thumb {
+    background: var(--dim-green);
+  }
+
+  .status-line {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .status-line .prompt {
+    color: var(--dim-green);
+    flex-shrink: 0;
+  }
+
+  .status-line .msg {
+    color: var(--green);
+  }
+
+  .status-line.error .msg {
+    color: var(--amber);
+    text-shadow: 0 0 6px var(--amber);
+  }
+
+  .status-line.success .msg {
+    text-shadow: 0 0 8px var(--green);
+  }
+
+  .spinner-char {
+    color: var(--amber);
+    font-weight: bold;
+  }
+
+  /* Download button */
+  #download-section {
+    display: none;
+    text-align: center;
+    margin-top: 1.5rem;
+  }
+
+  #download-btn {
+    display: inline-block;
+    background: transparent;
+    border: 1px solid var(--green);
+    color: var(--green);
+    font-family: 'Courier New', monospace;
+    font-size: 0.9rem;
+    letter-spacing: 0.2em;
+    padding: 0.75rem 2rem;
+    cursor: pointer;
+    text-decoration: none;
+    box-shadow: 0 0 8px rgba(0,255,65,0.3);
+    transition: all 0.2s;
+    text-transform: uppercase;
+  }
+
+  #download-btn:hover {
+    background: rgba(0,255,65,0.08);
+    box-shadow: 0 0 16px rgba(0,255,65,0.6), inset 0 0 10px rgba(0,255,65,0.05);
+    text-shadow: 0 0 8px var(--green);
+  }
+
+  /* Preset / speed selectors */
+  .option-row {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .option-group {
+    flex: 1;
+  }
+
+  .option-label {
+    font-size: 0.65rem;
+    letter-spacing: 0.15em;
+    color: var(--dim-green);
+    margin-bottom: 0.4rem;
+  }
+
+  .btn-group {
+    display: flex;
+    gap: 0;
+  }
+
+  .btn-opt {
+    flex: 1;
+    background: transparent;
+    border: 1px solid var(--dim-green);
+    color: var(--dim-green);
+    font-family: 'Courier New', monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.1em;
+    padding: 0.35rem 0;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.15s;
+    margin-left: -1px;
+  }
+
+  .btn-opt:first-child { margin-left: 0; }
+
+  .btn-opt:hover {
+    border-color: var(--green);
+    color: var(--green);
+  }
+
+  .btn-opt.active {
+    border-color: var(--green);
+    color: var(--green);
+    background: rgba(0,255,65,0.08);
+    box-shadow: 0 0 6px rgba(0,255,65,0.3);
+    z-index: 1;
+    position: relative;
+  }
+
+  .footer {
+    text-align: center;
+    font-size: 0.65rem;
+    color: var(--dim-green);
+    letter-spacing: 0.1em;
+    margin-top: 1.5rem;
+    opacity: 0.6;
+  }
+</style>
+</head>
+<body>
+<div class="screen">
+  <div class="terminal-box">
+    <div class="title">VIDEO → GIF CONVERTER</div>
+    <div class="subtitle">[ FFMPEG-POWERED &bull; LOCAL &bull; RETRO ]</div>
+
+    <hr class="divider">
+
+    <div id="drop-zone" onclick="document.getElementById('file-input').click()">
+      <span class="drop-icon">[&nbsp;&nbsp;&nbsp;&nbsp;]</span>
+      <div class="drop-text">DRAG VIDEO FILE HERE</div>
+      <div class="drop-sub">— OR CLICK TO SELECT —</div>
+      <div class="drop-sub" style="margin-top:0.75rem; opacity:0.7;">MP4 &bull; MOV &bull; MKV &bull; WEBM &bull; AVI &bull; ANY FORMAT</div>
+    </div>
+    <input type="file" id="file-input" accept="video/*,.mkv,.webm,.mov,.avi,.mp4,.flv,.wmv">
+
+    <hr class="divider">
+
+    <div class="option-row">
+      <div class="option-group">
+        <div class="option-label">PRESET</div>
+        <div class="btn-group" id="preset-group">
+          <button class="btn-opt" data-value="embed" title="240px · 10fps · 64 colors">EMBED</button>
+          <button class="btn-opt" data-value="web"   title="360px · 15fps · 128 colors">WEB</button>
+          <button class="btn-opt active" data-value="full" title="480px · 15fps · 256 colors">FULL</button>
+        </div>
+      </div>
+      <div class="option-group">
+        <div class="option-label">SPEED</div>
+        <div class="btn-group" id="speed-group">
+          <button class="btn-opt active" data-value="1">1×</button>
+          <button class="btn-opt" data-value="2">2×</button>
+          <button class="btn-opt" data-value="4">4×</button>
+          <button class="btn-opt" data-value="8">8×</button>
+        </div>
+      </div>
+    </div>
+
+    <div id="status-panel">
+      <div class="status-line">
+        <span class="prompt">&gt;</span>
+        <span class="msg">SYSTEM READY. AWAITING INPUT...<span class="cursor"></span></span>
+      </div>
+    </div>
+
+    <div id="download-section">
+      <hr class="divider">
+      <a id="download-btn" href="#" download="output.gif">[ DOWNLOAD GIF ]</a>
+    </div>
+
+    <div class="footer" id="footer-info">MAX FILE SIZE: 500MB &bull; FULL: 480PX/15FPS &bull; WEB: 360PX/15FPS &bull; EMBED: 240PX/10FPS</div>
+  </div>
+</div>
+
+<script>
+  const dropZone = document.getElementById('drop-zone');
+  const fileInput = document.getElementById('file-input');
+  const statusPanel = document.getElementById('status-panel');
+  const downloadSection = document.getElementById('download-section');
+  const downloadBtn = document.getElementById('download-btn');
+
+  let spinnerInterval = null;
+  let currentSpinnerEl = null;
+  const spinChars = ['|', '/', '-', '\\'];
+  let spinIdx = 0;
+
+  // Toggle button groups
+  function makeToggleGroup(groupId) {
+    const group = document.getElementById(groupId);
+    group.addEventListener('click', e => {
+      const btn = e.target.closest('.btn-opt');
+      if (!btn) return;
+      group.querySelectorAll('.btn-opt').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  }
+  makeToggleGroup('preset-group');
+  makeToggleGroup('speed-group');
+
+  function getSelected(groupId) {
+    return document.querySelector(`#${groupId} .btn-opt.active`)?.dataset.value;
+  }
+
+  function addLine(text, type = '') {
+    const line = document.createElement('div');
+    line.className = 'status-line' + (type ? ' ' + type : '');
+    line.innerHTML = `<span class="prompt">&gt;</span><span class="msg">${escapeHtml(text)}</span>`;
+    statusPanel.appendChild(line);
+    statusPanel.scrollTop = statusPanel.scrollHeight;
+    return line;
+  }
+
+  function escapeHtml(str) {
+    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function startSpinner(label) {
+    spinIdx = 0;
+    const line = document.createElement('div');
+    line.className = 'status-line';
+    line.innerHTML = `<span class="prompt">&gt;</span><span class="msg">${escapeHtml(label)} <span class="spinner-char">|</span></span>`;
+    statusPanel.appendChild(line);
+    statusPanel.scrollTop = statusPanel.scrollHeight;
+    currentSpinnerEl = line.querySelector('.spinner-char');
+    spinnerInterval = setInterval(() => {
+      spinIdx = (spinIdx + 1) % spinChars.length;
+      if (currentSpinnerEl) currentSpinnerEl.textContent = spinChars[spinIdx];
+    }, 120);
+    return line;
+  }
+
+  function stopSpinner(line, finalText, type = '') {
+    clearInterval(spinnerInterval);
+    spinnerInterval = null;
+    currentSpinnerEl = null;
+    if (line) {
+      line.className = 'status-line' + (type ? ' ' + type : '');
+      line.innerHTML = `<span class="prompt">&gt;</span><span class="msg">${escapeHtml(finalText)}</span>`;
+      statusPanel.scrollTop = statusPanel.scrollHeight;
+    }
+  }
+
+  function clearStatus() {
+    statusPanel.innerHTML = '';
+    downloadSection.style.display = 'none';
+    if (downloadBtn.href && downloadBtn.href !== '#') {
+      URL.revokeObjectURL(downloadBtn.href);
+      downloadBtn.href = '#';
+    }
+  }
+
+  function formatDuration(seconds) {
+    const s = Math.round(seconds);
+    const m = Math.floor(s / 60);
+    const rem = s % 60;
+    return m > 0 ? `${m}m ${rem}s` : `${rem}s`;
+  }
+
+  async function handleFile(file) {
+    clearStatus();
+
+    const preset = getSelected('preset-group') || 'full';
+    const speed  = getSelected('speed-group')  || '1';
+
+    addLine(`FILE: ${file.name} (${formatSize(file.size)})`);
+    addLine(`PRESET: ${preset.toUpperCase()}  SPEED: ${speed}×`);
+
+    const formData = new FormData();
+    formData.append('video', file);
+    formData.append('preset', preset);
+    formData.append('speed', speed);
+
+    addLine('UPLOADING...');
+    const convertingLine = startSpinner('CONVERTING (THIS MAY TAKE A MOMENT)');
+
+    try {
+      const response = await fetch('/convert', {
+        method: 'POST',
+        body: formData
+      });
+
+      if (!response.ok) {
+        let errMsg = 'CONVERSION FAILED';
+        try {
+          const errData = await response.json();
+          errMsg = errData.error || errMsg;
+        } catch (_) {}
+        stopSpinner(convertingLine, 'ERROR: ' + errMsg.toUpperCase(), 'error');
+        return;
+      }
+
+      const rawDuration = parseFloat(response.headers.get('X-Video-Duration') || '0');
+      const blob = await response.blob();
+
+      stopSpinner(convertingLine, 'CONVERSION COMPLETE.', 'success');
+      if (rawDuration > 0) {
+        const gifDuration = rawDuration / parseInt(speed, 10);
+        addLine(`SOURCE DURATION: ${formatDuration(rawDuration)}  →  GIF DURATION: ${formatDuration(gifDuration)}`, 'success');
+      }
+      addLine(`OUTPUT SIZE: ${formatSize(blob.size)}`, 'success');
+      addLine('DONE. GIF READY FOR DOWNLOAD.', 'success');
+
+      const url = URL.createObjectURL(blob);
+      downloadBtn.href = url;
+      downloadSection.style.display = 'block';
+
+    } catch (err) {
+      stopSpinner(convertingLine, 'ERROR: ' + (err.message || 'NETWORK FAILURE').toUpperCase(), 'error');
+    }
+  }
+
+  function formatSize(bytes) {
+    if (bytes < 1024) return bytes + ' B';
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+  }
+
+  // Drag-and-drop
+  dropZone.addEventListener('dragover', e => {
+    e.preventDefault();
+    dropZone.classList.add('dragover');
+  });
+
+  dropZone.addEventListener('dragleave', e => {
+    dropZone.classList.remove('dragover');
+  });
+
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    const file = e.dataTransfer.files[0];
+    if (file) handleFile(file);
+  });
+
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files[0]) {
+      handleFile(fileInput.files[0]);
+      fileInput.value = '';
+    }
+  });
+</script>
+</body>
+</html>
