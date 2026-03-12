@@ -4,223 +4,401 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>VIDEO → GIF CONVERTER</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='4' fill='%230a0a0a'/%3E%3Crect x='1.5' y='1.5' width='29' height='29' rx='3' fill='none' stroke='%2300ff41' stroke-width='1.5'/%3E%3Crect x='4' y='4' width='24' height='3' rx='1' fill='%2300ff41' opacity='0.2'/%3E%3Ctext x='4' y='24' font-family='monospace' font-size='13' fill='%2300ff41' font-weight='bold'%3E%3E_%3C/text%3E%3C/svg%3E">
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   :root {
-    --green: #00ff41;
-    --amber: #ffb000;
-    --bg: #0a0a0a;
-    --dim-green: #00a028;
+    --green:     #00ff41;
+    --green-dim: #00a028;
+    --green-pale:#004d14;
+    --amber:     #ffb000;
+    --red:       #ff4444;
+    --bg:        #0a0a0a;
+  }
+
+  html, body {
+    width: 100%; height: 100%;
+    overflow: hidden;
   }
 
   body {
     background: var(--bg);
     color: var(--green);
     font-family: 'Courier New', monospace;
-    min-height: 100vh;
     display: flex;
-    align-items: center;
-    justify-content: center;
-    overflow: hidden;
+    flex-direction: column;
     position: relative;
   }
 
-  /* Scanlines overlay */
-  body::after {
-    content: '';
+  /* ── Matrix rain canvas ─────────────────────────────────── */
+  #bg-canvas {
+    position: fixed;
+    inset: 0;
+    z-index: 0;
+    opacity: 0.55;
+  }
+
+  /* ── CRT effects ────────────────────────────────────────── */
+  /* Scanlines */
+  .crt-scanlines {
     position: fixed;
     inset: 0;
     background: repeating-linear-gradient(
       0deg,
-      transparent,
-      transparent 2px,
-      rgba(0, 0, 0, 0.15) 2px,
-      rgba(0, 0, 0, 0.15) 4px
+      transparent, transparent 2px,
+      rgba(0,0,0,0.18) 2px, rgba(0,0,0,0.18) 4px
     );
     pointer-events: none;
-    z-index: 100;
+    z-index: 90;
   }
 
   /* Vignette */
-  body::before {
-    content: '';
+  .crt-vignette {
     position: fixed;
     inset: 0;
-    background: radial-gradient(ellipse at center, transparent 60%, rgba(0,0,0,0.85) 100%);
+    background: radial-gradient(ellipse at center,
+      transparent 55%,
+      rgba(0,0,0,0.7) 100%
+    );
     pointer-events: none;
-    z-index: 99;
+    z-index: 91;
   }
 
+  /* Sweep line */
+  .crt-sweep {
+    position: fixed;
+    left: 0; right: 0;
+    height: 120px;
+    background: linear-gradient(
+      to bottom,
+      transparent 0%,
+      rgba(0,255,65,0.028) 40%,
+      rgba(0,255,65,0.045) 50%,
+      rgba(0,255,65,0.028) 60%,
+      transparent 100%
+    );
+    animation: sweep 9s linear infinite;
+    pointer-events: none;
+    z-index: 92;
+  }
+
+  @keyframes sweep {
+    from { top: -120px; }
+    to   { top: 100vh;  }
+  }
+
+  /* ── Status bars ────────────────────────────────────────── */
+  .sysbar {
+    position: fixed;
+    left: 0; right: 0;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    padding: 0 1rem;
+    font-size: 0.62rem;
+    letter-spacing: 0.12em;
+    color: var(--green-dim);
+    border-color: var(--green-pale);
+    background: rgba(0,0,0,0.75);
+    z-index: 80;
+    gap: 0;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
+  .sysbar-top {
+    top: 0;
+    border-bottom: 1px solid var(--green-pale);
+    box-shadow: 0 1px 12px rgba(0,255,65,0.08);
+  }
+
+  .sysbar-bot {
+    bottom: 0;
+    border-top: 1px solid var(--green-pale);
+    box-shadow: 0 -1px 12px rgba(0,255,65,0.08);
+  }
+
+  .sysbar-sep {
+    margin: 0 0.6rem;
+    opacity: 0.4;
+  }
+
+  .sysbar .bright { color: var(--green); }
+  .sysbar .amber  { color: var(--amber); }
+  .sysbar .push   { margin-left: auto; }
+
+  .dot-blink {
+    display: inline-block;
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--green);
+    box-shadow: 0 0 4px var(--green), 0 0 8px var(--green);
+    animation: dot-pulse 2s ease-in-out infinite;
+    vertical-align: middle;
+    margin-right: 0.4rem;
+  }
+
+  @keyframes dot-pulse {
+    0%, 100% { opacity: 1;   box-shadow: 0 0 4px var(--green), 0 0 8px var(--green); }
+    50%       { opacity: 0.3; box-shadow: none; }
+  }
+
+  /* ── Main content wrapper ───────────────────────────────── */
+  #main {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 42px 1.5rem;
+    position: relative;
+    z-index: 10;
+  }
+
+  /* ── Terminal card ──────────────────────────────────────── */
   @keyframes flicker {
-    0%, 100% { opacity: 1; }
-    92% { opacity: 1; }
-    93% { opacity: 0.85; }
-    94% { opacity: 1; }
-    96% { opacity: 0.9; }
-    97% { opacity: 1; }
+    0%, 89%, 91%, 93%, 95%, 100% { opacity: 1; }
+    90%  { opacity: 0.88; }
+    92%  { opacity: 0.95; }
+    94%  { opacity: 0.9;  }
   }
 
+  .terminal-card {
+    width: 100%;
+    max-width: 660px;
+    animation: flicker 11s ease-in-out infinite;
+  }
+
+  /* Outer bezel glow */
+  .bezel {
+    border: 1px solid var(--green-pale);
+    padding: 3px;
+    box-shadow:
+      0 0  2px var(--green-pale),
+      0 0 30px rgba(0,255,65,0.06),
+      0 0 60px rgba(0,255,65,0.03);
+  }
+
+  /* Inner screen */
+  .screen {
+    border: 1px solid var(--green);
+    background: rgba(0,8,2,0.92);
+    padding: 1.75rem 2rem;
+    box-shadow:
+      0 0  8px rgba(0,255,65,0.5),
+      0 0 24px rgba(0,255,65,0.15),
+      inset 0 0 40px rgba(0,255,65,0.04);
+  }
+
+  /* ── Title ──────────────────────────────────────────────── */
+  .title-bar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.75rem;
+    margin-bottom: 0.3rem;
+  }
+
+  .title-bracket {
+    font-size: 1.4rem;
+    color: var(--green-dim);
+    text-shadow: 0 0 6px var(--green-dim);
+  }
+
+  .title {
+    font-size: 1.45rem;
+    font-weight: bold;
+    letter-spacing: 0.35em;
+    text-shadow:
+      0 0  6px var(--green),
+      0 0 14px var(--green),
+      0 0 30px rgba(0,255,65,0.5),
+      0 0 60px rgba(0,255,65,0.2);
+  }
+
+  .subtitle {
+    text-align: center;
+    font-size: 0.62rem;
+    letter-spacing: 0.22em;
+    color: var(--green-dim);
+    margin-bottom: 0;
+  }
+
+  /* ── Divider ────────────────────────────────────────────── */
+  .divider {
+    border: none;
+    border-top: 1px solid var(--green-pale);
+    margin: 1.2rem 0;
+    box-shadow: 0 0 4px rgba(0,255,65,0.2);
+  }
+
+  /* ── Drop zone ──────────────────────────────────────────── */
+  @keyframes border-march {
+    to { background-position: 100% 0, 0 100%, 0 0, 100% 100%; }
+  }
+
+  @keyframes zone-pulse {
+    0%, 100% { box-shadow: 0 0 6px rgba(0,255,65,0.25); }
+    50%       { box-shadow: 0 0 14px rgba(0,255,65,0.45); }
+  }
+
+  #drop-zone {
+    padding: 2.2rem 2rem;
+    text-align: center;
+    cursor: pointer;
+    position: relative;
+    /* marching dashed border via background gradients */
+    background-image:
+      repeating-linear-gradient(90deg, var(--green) 0, var(--green) 8px, transparent 8px, transparent 16px),
+      repeating-linear-gradient(90deg, var(--green) 0, var(--green) 8px, transparent 8px, transparent 16px),
+      repeating-linear-gradient(0deg,  var(--green) 0, var(--green) 8px, transparent 8px, transparent 16px),
+      repeating-linear-gradient(0deg,  var(--green) 0, var(--green) 8px, transparent 8px, transparent 16px);
+    background-size: 200% 1px, 200% 1px, 1px 200%, 1px 200%;
+    background-position: 0 0, 100% 100%, 0 100%, 100% 0;
+    background-repeat: no-repeat;
+    animation: border-march 8s linear infinite, zone-pulse 3s ease-in-out infinite;
+    transition: background-image 0.2s;
+  }
+
+  #drop-zone:hover, #drop-zone.dragover {
+    background-image:
+      repeating-linear-gradient(90deg, var(--amber) 0, var(--amber) 8px, transparent 8px, transparent 16px),
+      repeating-linear-gradient(90deg, var(--amber) 0, var(--amber) 8px, transparent 8px, transparent 16px),
+      repeating-linear-gradient(0deg,  var(--amber) 0, var(--amber) 8px, transparent 8px, transparent 16px),
+      repeating-linear-gradient(0deg,  var(--amber) 0, var(--amber) 8px, transparent 8px, transparent 16px);
+    background-color: rgba(255,176,0,0.03);
+    animation: border-march 2s linear infinite;
+    color: var(--amber);
+  }
+
+  .drop-ascii {
+    font-size: 0.8rem;
+    line-height: 1.4;
+    letter-spacing: 0.05em;
+    color: var(--green-dim);
+    margin-bottom: 0.9rem;
+    text-shadow: 0 0 6px rgba(0,255,65,0.3);
+  }
+
+  .drop-text {
+    font-size: 0.9rem;
+    letter-spacing: 0.2em;
+    font-weight: bold;
+    text-shadow: 0 0 8px var(--green);
+    margin-bottom: 0.4rem;
+  }
+
+  .drop-sub {
+    font-size: 0.65rem;
+    color: var(--green-dim);
+    letter-spacing: 0.12em;
+    margin-top: 0.35rem;
+  }
+
+  #file-input { display: none; }
+
+  /* ── Blink cursor ───────────────────────────────────────── */
   @keyframes blink {
     0%, 49% { opacity: 1; }
     50%, 100% { opacity: 0; }
   }
 
-  @keyframes pulse-border {
-    0%, 100% { box-shadow: 0 0 8px var(--green), 0 0 16px rgba(0,255,65,0.3); }
-    50% { box-shadow: 0 0 12px var(--green), 0 0 30px rgba(0,255,65,0.5); }
-  }
-
-  .screen {
-    animation: flicker 8s infinite;
-    width: 100%;
-    max-width: 680px;
-    padding: 2rem;
-    position: relative;
-    z-index: 1;
-  }
-
-  .terminal-box {
-    border: 1px solid var(--green);
-    box-shadow: 0 0 8px var(--green), 0 0 20px rgba(0,255,65,0.2), inset 0 0 20px rgba(0,255,65,0.03);
-    padding: 2rem;
-  }
-
-  .title {
-    text-align: center;
-    font-size: 1.6rem;
-    font-weight: bold;
-    letter-spacing: 0.3em;
-    text-shadow: 0 0 8px var(--green), 0 0 20px var(--green), 0 0 40px rgba(0,255,65,0.4);
-    margin-bottom: 0.5rem;
-  }
-
-  .subtitle {
-    text-align: center;
-    font-size: 0.7rem;
-    letter-spacing: 0.2em;
-    color: var(--dim-green);
-    margin-bottom: 2rem;
-  }
-
-  .divider {
-    border: none;
-    border-top: 1px solid var(--dim-green);
-    margin: 1.5rem 0;
-    box-shadow: 0 0 4px rgba(0,255,65,0.3);
-  }
-
-  /* Drop zone */
-  #drop-zone {
-    border: 1px dashed var(--green);
-    padding: 3rem 2rem;
-    text-align: center;
-    cursor: pointer;
-    position: relative;
-    transition: border-color 0.2s, box-shadow 0.2s;
-    box-shadow: 0 0 6px rgba(0,255,65,0.2);
-  }
-
-  #drop-zone:hover, #drop-zone.dragover {
-    border-color: var(--amber);
-    box-shadow: 0 0 12px rgba(255,176,0,0.4), inset 0 0 20px rgba(255,176,0,0.05);
-    color: var(--amber);
-    animation: pulse-border 1.5s ease-in-out infinite;
-  }
-
-  #drop-zone.dragover {
-    background: rgba(255,176,0,0.03);
-  }
-
-  .drop-icon {
-    font-size: 2rem;
-    display: block;
-    margin-bottom: 1rem;
-    text-shadow: 0 0 8px var(--green);
-  }
-
-  .drop-text {
-    font-size: 0.85rem;
-    letter-spacing: 0.15em;
-    line-height: 2;
-  }
-
-  .drop-sub {
-    font-size: 0.7rem;
-    color: var(--dim-green);
-    letter-spacing: 0.1em;
-    margin-top: 0.5rem;
-  }
-
-  #file-input {
-    display: none;
-  }
-
   .cursor {
     display: inline-block;
-    width: 0.6em;
-    height: 1em;
+    width: 0.55em; height: 0.95em;
     background: var(--green);
     vertical-align: text-bottom;
     animation: blink 1s step-end infinite;
     box-shadow: 0 0 6px var(--green);
   }
 
-  /* Status panel */
-  #status-panel {
-    background: rgba(0,255,65,0.03);
-    border: 1px solid var(--dim-green);
-    padding: 1rem;
-    min-height: 120px;
-    max-height: 200px;
-    overflow-y: auto;
-    font-size: 0.8rem;
-    line-height: 1.8;
-  }
-
-  #status-panel::-webkit-scrollbar {
-    width: 4px;
-  }
-  #status-panel::-webkit-scrollbar-track {
-    background: transparent;
-  }
-  #status-panel::-webkit-scrollbar-thumb {
-    background: var(--dim-green);
-  }
-
-  .status-line {
+  /* ── Option toggles ─────────────────────────────────────── */
+  .option-row {
     display: flex;
-    gap: 0.5rem;
+    gap: 0.9rem;
+    margin-bottom: 1rem;
   }
 
-  .status-line .prompt {
-    color: var(--dim-green);
-    flex-shrink: 0;
+  .option-group { flex: 1; }
+
+  .option-label {
+    font-size: 0.6rem;
+    letter-spacing: 0.18em;
+    color: var(--green-dim);
+    margin-bottom: 0.35rem;
   }
 
-  .status-line .msg {
+  .btn-group { display: flex; }
+
+  .btn-opt {
+    flex: 1;
+    background: transparent;
+    border: 1px solid var(--green-pale);
+    color: var(--green-pale);
+    font-family: 'Courier New', monospace;
+    font-size: 0.68rem;
+    letter-spacing: 0.1em;
+    padding: 0.32rem 0;
+    cursor: pointer;
+    text-align: center;
+    transition: all 0.12s;
+    margin-left: -1px;
+  }
+
+  .btn-opt:first-child { margin-left: 0; }
+
+  .btn-opt:hover {
+    border-color: var(--green-dim);
+    color: var(--green-dim);
+    z-index: 1; position: relative;
+  }
+
+  .btn-opt.active {
+    border-color: var(--green);
     color: var(--green);
+    background: rgba(0,255,65,0.08);
+    box-shadow: 0 0 8px rgba(0,255,65,0.3), inset 0 0 8px rgba(0,255,65,0.04);
+    z-index: 2; position: relative;
+    text-shadow: 0 0 6px var(--green);
   }
+
+  /* ── Status panel ───────────────────────────────────────── */
+  #status-panel {
+    background: rgba(0,255,65,0.02);
+    border: 1px solid var(--green-pale);
+    padding: 0.75rem 1rem;
+    min-height: 110px;
+    max-height: 185px;
+    overflow-y: auto;
+    font-size: 0.76rem;
+    line-height: 1.85;
+    box-shadow: inset 0 0 16px rgba(0,255,65,0.03);
+  }
+
+  #status-panel::-webkit-scrollbar { width: 3px; }
+  #status-panel::-webkit-scrollbar-track { background: transparent; }
+  #status-panel::-webkit-scrollbar-thumb { background: var(--green-pale); }
+
+  .status-line { display: flex; gap: 0.5rem; }
+  .status-line .prompt { color: var(--green-dim); flex-shrink: 0; }
+  .status-line .msg    { color: var(--green); }
 
   .status-line.error .msg {
     color: var(--amber);
-    text-shadow: 0 0 6px var(--amber);
+    text-shadow: 0 0 6px rgba(255,176,0,0.5);
   }
 
   .status-line.success .msg {
-    text-shadow: 0 0 8px var(--green);
+    text-shadow: 0 0 8px rgba(0,255,65,0.6);
   }
 
-  .spinner-char {
-    color: var(--amber);
-    font-weight: bold;
-  }
+  .spinner-char { color: var(--amber); font-weight: bold; }
 
-  /* Download button */
+  /* ── Download button ────────────────────────────────────── */
   #download-section {
     display: none;
     text-align: center;
-    margin-top: 1.5rem;
+    margin-top: 1.2rem;
   }
 
   #download-btn {
@@ -229,306 +407,362 @@
     border: 1px solid var(--green);
     color: var(--green);
     font-family: 'Courier New', monospace;
-    font-size: 0.9rem;
-    letter-spacing: 0.2em;
-    padding: 0.75rem 2rem;
+    font-size: 0.85rem;
+    letter-spacing: 0.22em;
+    padding: 0.7rem 2.2rem;
     cursor: pointer;
     text-decoration: none;
-    box-shadow: 0 0 8px rgba(0,255,65,0.3);
-    transition: all 0.2s;
     text-transform: uppercase;
-  }
-
-  #download-btn:hover {
-    background: rgba(0,255,65,0.08);
-    box-shadow: 0 0 16px rgba(0,255,65,0.6), inset 0 0 10px rgba(0,255,65,0.05);
-    text-shadow: 0 0 8px var(--green);
-  }
-
-  /* Preset / speed selectors */
-  .option-row {
-    display: flex;
-    gap: 1rem;
-    margin-bottom: 1rem;
-  }
-
-  .option-group {
-    flex: 1;
-  }
-
-  .option-label {
-    font-size: 0.65rem;
-    letter-spacing: 0.15em;
-    color: var(--dim-green);
-    margin-bottom: 0.4rem;
-  }
-
-  .btn-group {
-    display: flex;
-    gap: 0;
-  }
-
-  .btn-opt {
-    flex: 1;
-    background: transparent;
-    border: 1px solid var(--dim-green);
-    color: var(--dim-green);
-    font-family: 'Courier New', monospace;
-    font-size: 0.7rem;
-    letter-spacing: 0.1em;
-    padding: 0.35rem 0;
-    cursor: pointer;
-    text-align: center;
-    transition: all 0.15s;
-    margin-left: -1px;
-  }
-
-  .btn-opt:first-child { margin-left: 0; }
-
-  .btn-opt:hover {
-    border-color: var(--green);
-    color: var(--green);
-  }
-
-  .btn-opt.active {
-    border-color: var(--green);
-    color: var(--green);
-    background: rgba(0,255,65,0.08);
-    box-shadow: 0 0 6px rgba(0,255,65,0.3);
-    z-index: 1;
+    box-shadow: 0 0 10px rgba(0,255,65,0.3), inset 0 0 10px rgba(0,255,65,0.03);
+    transition: all 0.18s;
     position: relative;
   }
 
+  #download-btn::before, #download-btn::after {
+    content: '█';
+    position: absolute;
+    top: 50%; transform: translateY(-50%);
+    font-size: 0.4rem;
+    color: var(--green-dim);
+    transition: all 0.18s;
+  }
+  #download-btn::before { left: 0.7rem; }
+  #download-btn::after  { right: 0.7rem; }
+
+  #download-btn:hover {
+    background: rgba(0,255,65,0.08);
+    box-shadow: 0 0 20px rgba(0,255,65,0.5), inset 0 0 16px rgba(0,255,65,0.06);
+    text-shadow: 0 0 10px var(--green);
+  }
+  #download-btn:hover::before,
+  #download-btn:hover::after { color: var(--green); }
+
+  /* ── Footer ─────────────────────────────────────────────── */
   .footer {
     text-align: center;
-    font-size: 0.65rem;
-    color: var(--dim-green);
+    font-size: 0.58rem;
+    color: var(--green-pale);
     letter-spacing: 0.1em;
-    margin-top: 1.5rem;
-    opacity: 0.6;
+    margin-top: 1.2rem;
+    opacity: 0.7;
   }
 </style>
 </head>
 <body>
-<div class="screen">
-  <div class="terminal-box">
-    <div class="title">VIDEO → GIF CONVERTER</div>
-    <div class="subtitle">[ FFMPEG-POWERED &bull; LOCAL &bull; RETRO ]</div>
 
-    <hr class="divider">
+<!-- Matrix rain -->
+<canvas id="bg-canvas"></canvas>
 
-    <div id="drop-zone" onclick="document.getElementById('file-input').click()">
-      <span class="drop-icon">[&nbsp;&nbsp;&nbsp;&nbsp;]</span>
-      <div class="drop-text">DRAG VIDEO FILE HERE</div>
-      <div class="drop-sub">— OR CLICK TO SELECT —</div>
-      <div class="drop-sub" style="margin-top:0.75rem; opacity:0.7;">MP4 &bull; MOV &bull; MKV &bull; WEBM &bull; AVI &bull; ANY FORMAT</div>
-    </div>
-    <input type="file" id="file-input" accept="video/*,.mkv,.webm,.mov,.avi,.mp4,.flv,.wmv">
+<!-- CRT overlays -->
+<div class="crt-scanlines"></div>
+<div class="crt-vignette"></div>
+<div class="crt-sweep"></div>
 
-    <hr class="divider">
+<!-- Top system bar -->
+<div class="sysbar sysbar-top">
+  <span class="dot-blink"></span>
+  <span class="bright">VIDEO-TO-GIF</span>
+  <span class="sysbar-sep">║</span>
+  <span>SYS:OK</span>
+  <span class="sysbar-sep">·</span>
+  <span>FFMPEG:8.0.1</span>
+  <span class="sysbar-sep">·</span>
+  <span>PORT:3000</span>
+  <span class="push">
+    <span id="top-clock" class="bright">--:--:--</span>
+  </span>
+</div>
 
-    <div class="option-row">
-      <div class="option-group">
-        <div class="option-label">PRESET</div>
-        <div class="btn-group" id="preset-group">
-          <button class="btn-opt" data-value="embed" title="240px · 10fps · 64 colors">EMBED</button>
-          <button class="btn-opt" data-value="web"   title="360px · 15fps · 128 colors">WEB</button>
-          <button class="btn-opt active" data-value="full" title="480px · 15fps · 256 colors">FULL</button>
+<!-- Main -->
+<div id="main">
+  <div class="terminal-card">
+    <div class="bezel">
+      <div class="screen">
+
+        <div class="title-bar">
+          <span class="title-bracket">╔═</span>
+          <span class="title">VIDEO → GIF</span>
+          <span class="title-bracket">=╗</span>
         </div>
-      </div>
-      <div class="option-group">
-        <div class="option-label">SPEED</div>
-        <div class="btn-group" id="speed-group">
-          <button class="btn-opt active" data-value="1">1×</button>
-          <button class="btn-opt" data-value="2">2×</button>
-          <button class="btn-opt" data-value="4">4×</button>
-          <button class="btn-opt" data-value="8">8×</button>
+        <div class="subtitle">[ DRAG &bull; DROP &bull; CONVERT &bull; LOCAL &bull; FFMPEG ]</div>
+
+        <hr class="divider">
+
+        <div id="drop-zone" onclick="document.getElementById('file-input').click()">
+          <div class="drop-ascii">
+┌─────────────────────────────────┐<br>
+│  &nbsp;&nbsp;▶▶&nbsp; DROP VIDEO FILE HERE &nbsp;◀◀&nbsp;&nbsp; │<br>
+└─────────────────────────────────┘</div>
+          <div class="drop-text">— OR CLICK TO BROWSE —</div>
+          <div class="drop-sub">MP4 &bull; MOV &bull; MKV &bull; WEBM &bull; AVI &bull; ANY FORMAT FFMPEG SUPPORTS</div>
         </div>
-      </div>
-    </div>
+        <input type="file" id="file-input" accept="video/*,.mkv,.webm,.mov,.avi,.mp4,.flv,.wmv">
 
-    <div id="status-panel">
-      <div class="status-line">
-        <span class="prompt">&gt;</span>
-        <span class="msg">SYSTEM READY. AWAITING INPUT...<span class="cursor"></span></span>
-      </div>
-    </div>
+        <hr class="divider">
 
-    <div id="download-section">
-      <hr class="divider">
-      <a id="download-btn" href="#" download="output.gif">[ DOWNLOAD GIF ]</a>
-    </div>
+        <div class="option-row">
+          <div class="option-group">
+            <div class="option-label">// PRESET</div>
+            <div class="btn-group" id="preset-group">
+              <button class="btn-opt" data-value="embed" title="240px · 10fps · 64 colors">EMBED</button>
+              <button class="btn-opt" data-value="web"   title="360px · 15fps · 128 colors">WEB</button>
+              <button class="btn-opt active" data-value="full" title="480px · 15fps · 256 colors">FULL</button>
+            </div>
+          </div>
+          <div class="option-group">
+            <div class="option-label">// SPEED</div>
+            <div class="btn-group" id="speed-group">
+              <button class="btn-opt active" data-value="1">1×</button>
+              <button class="btn-opt" data-value="2">2×</button>
+              <button class="btn-opt" data-value="4">4×</button>
+              <button class="btn-opt" data-value="8">8×</button>
+            </div>
+          </div>
+        </div>
 
-    <div class="footer" id="footer-info">MAX FILE SIZE: 500MB &bull; FULL: 480PX/15FPS &bull; WEB: 360PX/15FPS &bull; EMBED: 240PX/10FPS</div>
-  </div>
+        <div id="status-panel">
+          <div class="status-line">
+            <span class="prompt">&gt;</span>
+            <span class="msg">SYSTEM READY. AWAITING INPUT...<span class="cursor"></span></span>
+          </div>
+        </div>
+
+        <div id="download-section">
+          <hr class="divider">
+          <a id="download-btn" href="#" download="output.gif">[ DOWNLOAD GIF ]</a>
+        </div>
+
+        <div class="footer">
+          EMBED: 240px/10fps/64col &nbsp;·&nbsp; WEB: 360px/15fps/128col &nbsp;·&nbsp; FULL: 480px/15fps/256col &nbsp;·&nbsp; MAX: 500MB
+        </div>
+
+      </div><!-- /screen -->
+    </div><!-- /bezel -->
+  </div><!-- /terminal-card -->
+</div><!-- /main -->
+
+<!-- Bottom system bar -->
+<div class="sysbar sysbar-bot">
+  <span>LOCAL ONLY</span>
+  <span class="sysbar-sep">·</span>
+  <span>NO DATA LEAVES YOUR MACHINE</span>
+  <span class="push">
+    <span id="mem-stat">MEM:--</span>
+    <span class="sysbar-sep">·</span>
+    <span id="cpu-stat" class="amber">CPU:--</span>
+  </span>
 </div>
 
 <script>
-  const dropZone = document.getElementById('drop-zone');
-  const fileInput = document.getElementById('file-input');
-  const statusPanel = document.getElementById('status-panel');
-  const downloadSection = document.getElementById('download-section');
-  const downloadBtn = document.getElementById('download-btn');
+// ── Matrix rain ─────────────────────────────────────────────
+(function () {
+  const canvas = document.getElementById('bg-canvas');
+  const ctx = canvas.getContext('2d');
+  const FONT_SIZE = 13;
+  const CHARS = 'アイウエオカキクケコサシスセソタチツテトナニヌネノハヒフヘホマミムメモヤユヨラリルレロワヲン0123456789ABCDEF><[]{}|/\\!?#$%@';
 
-  let spinnerInterval = null;
-  let currentSpinnerEl = null;
-  const spinChars = ['|', '/', '-', '\\'];
-  let spinIdx = 0;
+  let cols, drops;
 
-  // Toggle button groups
-  function makeToggleGroup(groupId) {
-    const group = document.getElementById(groupId);
-    group.addEventListener('click', e => {
-      const btn = e.target.closest('.btn-opt');
-      if (!btn) return;
-      group.querySelectorAll('.btn-opt').forEach(b => b.classList.remove('active'));
-      btn.classList.add('active');
-    });
-  }
-  makeToggleGroup('preset-group');
-  makeToggleGroup('speed-group');
-
-  function getSelected(groupId) {
-    return document.querySelector(`#${groupId} .btn-opt.active`)?.dataset.value;
+  function resize() {
+    canvas.width  = window.innerWidth;
+    canvas.height = window.innerHeight;
+    cols  = Math.floor(canvas.width / FONT_SIZE);
+    drops = Array.from({ length: cols }, () => Math.random() * -50);
   }
 
-  function addLine(text, type = '') {
-    const line = document.createElement('div');
+  resize();
+  window.addEventListener('resize', resize);
+
+  function draw() {
+    // Fade trail
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.065)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    ctx.font = FONT_SIZE + 'px monospace';
+
+    for (let i = 0; i < cols; i++) {
+      const y = drops[i] * FONT_SIZE;
+
+      // Head: bright green
+      ctx.fillStyle = 'rgba(0, 255, 65, 0.9)';
+      ctx.fillText(CHARS[Math.floor(Math.random() * CHARS.length)], i * FONT_SIZE, y);
+
+      // Slightly behind: mid green
+      ctx.fillStyle = 'rgba(0, 200, 50, 0.35)';
+      ctx.fillText(CHARS[Math.floor(Math.random() * CHARS.length)], i * FONT_SIZE, y - FONT_SIZE);
+
+      if (y > canvas.height && Math.random() > 0.975) {
+        drops[i] = 0;
+      }
+      drops[i] += 0.5;
+    }
+  }
+
+  setInterval(draw, 50);
+})();
+
+// ── Live clock ───────────────────────────────────────────────
+function tickClock() {
+  const now = new Date();
+  const pad = n => String(n).padStart(2, '0');
+  document.getElementById('top-clock').textContent =
+    pad(now.getHours()) + ':' + pad(now.getMinutes()) + ':' + pad(now.getSeconds());
+}
+tickClock();
+setInterval(tickClock, 1000);
+
+// ── Fake CPU/mem flicker ─────────────────────────────────────
+function tickStats() {
+  const mem = (Math.random() * 3 + 1.5).toFixed(1);
+  const cpu = Math.floor(Math.random() * 8 + 1);
+  document.getElementById('mem-stat').textContent = 'MEM:' + mem + 'GB';
+  document.getElementById('cpu-stat').textContent = 'CPU:' + cpu + '%';
+}
+tickStats();
+setInterval(tickStats, 3000);
+
+// ── App logic ────────────────────────────────────────────────
+const dropZone      = document.getElementById('drop-zone');
+const fileInput     = document.getElementById('file-input');
+const statusPanel   = document.getElementById('status-panel');
+const downloadSection = document.getElementById('download-section');
+const downloadBtn   = document.getElementById('download-btn');
+
+let spinnerInterval = null, currentSpinnerEl = null, spinIdx = 0;
+const spinChars = ['|', '/', '-', '\\'];
+
+// Toggle button groups
+function makeToggleGroup(id) {
+  document.getElementById(id).addEventListener('click', e => {
+    const btn = e.target.closest('.btn-opt');
+    if (!btn) return;
+    document.querySelectorAll(`#${id} .btn-opt`).forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+  });
+}
+makeToggleGroup('preset-group');
+makeToggleGroup('speed-group');
+
+function getSelected(id) {
+  return document.querySelector(`#${id} .btn-opt.active`)?.dataset.value;
+}
+
+function escapeHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+function addLine(text, type = '') {
+  const line = document.createElement('div');
+  line.className = 'status-line' + (type ? ' ' + type : '');
+  line.innerHTML = `<span class="prompt">&gt;</span><span class="msg">${escapeHtml(text)}</span>`;
+  statusPanel.appendChild(line);
+  statusPanel.scrollTop = statusPanel.scrollHeight;
+  return line;
+}
+
+function startSpinner(label) {
+  spinIdx = 0;
+  const line = document.createElement('div');
+  line.className = 'status-line';
+  line.innerHTML = `<span class="prompt">&gt;</span><span class="msg">${escapeHtml(label)} <span class="spinner-char">|</span></span>`;
+  statusPanel.appendChild(line);
+  statusPanel.scrollTop = statusPanel.scrollHeight;
+  currentSpinnerEl = line.querySelector('.spinner-char');
+  spinnerInterval = setInterval(() => {
+    spinIdx = (spinIdx + 1) % spinChars.length;
+    if (currentSpinnerEl) currentSpinnerEl.textContent = spinChars[spinIdx];
+  }, 120);
+  return line;
+}
+
+function stopSpinner(line, finalText, type = '') {
+  clearInterval(spinnerInterval);
+  spinnerInterval = null; currentSpinnerEl = null;
+  if (line) {
     line.className = 'status-line' + (type ? ' ' + type : '');
-    line.innerHTML = `<span class="prompt">&gt;</span><span class="msg">${escapeHtml(text)}</span>`;
-    statusPanel.appendChild(line);
+    line.innerHTML = `<span class="prompt">&gt;</span><span class="msg">${escapeHtml(finalText)}</span>`;
     statusPanel.scrollTop = statusPanel.scrollHeight;
-    return line;
   }
+}
 
-  function escapeHtml(str) {
-    return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+function clearStatus() {
+  statusPanel.innerHTML = '';
+  downloadSection.style.display = 'none';
+  if (downloadBtn.href && downloadBtn.href !== location.href) {
+    URL.revokeObjectURL(downloadBtn.getAttribute('href'));
+    downloadBtn.setAttribute('href', '#');
   }
+}
 
-  function startSpinner(label) {
-    spinIdx = 0;
-    const line = document.createElement('div');
-    line.className = 'status-line';
-    line.innerHTML = `<span class="prompt">&gt;</span><span class="msg">${escapeHtml(label)} <span class="spinner-char">|</span></span>`;
-    statusPanel.appendChild(line);
-    statusPanel.scrollTop = statusPanel.scrollHeight;
-    currentSpinnerEl = line.querySelector('.spinner-char');
-    spinnerInterval = setInterval(() => {
-      spinIdx = (spinIdx + 1) % spinChars.length;
-      if (currentSpinnerEl) currentSpinnerEl.textContent = spinChars[spinIdx];
-    }, 120);
-    return line;
-  }
+function fmtSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
 
-  function stopSpinner(line, finalText, type = '') {
-    clearInterval(spinnerInterval);
-    spinnerInterval = null;
-    currentSpinnerEl = null;
-    if (line) {
-      line.className = 'status-line' + (type ? ' ' + type : '');
-      line.innerHTML = `<span class="prompt">&gt;</span><span class="msg">${escapeHtml(finalText)}</span>`;
-      statusPanel.scrollTop = statusPanel.scrollHeight;
+function fmtDuration(sec) {
+  const s = Math.round(sec), m = Math.floor(s / 60), r = s % 60;
+  return m > 0 ? `${m}m ${r}s` : `${r}s`;
+}
+
+async function handleFile(file) {
+  clearStatus();
+  const preset = getSelected('preset-group') || 'full';
+  const speed  = getSelected('speed-group')  || '1';
+
+  addLine(`FILE: ${file.name}  (${fmtSize(file.size)})`);
+  addLine(`PRESET: ${preset.toUpperCase()}   SPEED: ${speed}×`);
+
+  const fd = new FormData();
+  fd.append('video', file);
+  fd.append('preset', preset);
+  fd.append('speed', speed);
+
+  addLine('UPLOADING...');
+  const convertLine = startSpinner('CONVERTING (THIS MAY TAKE A MOMENT)');
+
+  try {
+    const res = await fetch('/convert', { method: 'POST', body: fd });
+
+    if (!res.ok) {
+      let msg = 'CONVERSION FAILED';
+      try { const j = await res.json(); msg = j.error || msg; } catch (_) {}
+      stopSpinner(convertLine, 'ERROR: ' + msg.toUpperCase(), 'error');
+      return;
     }
-  }
 
-  function clearStatus() {
-    statusPanel.innerHTML = '';
-    downloadSection.style.display = 'none';
-    if (downloadBtn.href && downloadBtn.href !== '#') {
-      URL.revokeObjectURL(downloadBtn.href);
-      downloadBtn.href = '#';
+    const rawDur = parseFloat(res.headers.get('X-Video-Duration') || '0');
+    const blob = await res.blob();
+
+    stopSpinner(convertLine, 'CONVERSION COMPLETE.', 'success');
+    if (rawDur > 0) {
+      const gifDur = rawDur / parseInt(speed, 10);
+      addLine(`SOURCE: ${fmtDuration(rawDur)}  →  GIF: ${fmtDuration(gifDur)}  (${speed}× speed)`, 'success');
     }
+    addLine(`OUTPUT SIZE: ${fmtSize(blob.size)}`, 'success');
+    addLine('DONE. GIF READY FOR DOWNLOAD.', 'success');
+
+    const url = URL.createObjectURL(blob);
+    downloadBtn.setAttribute('href', url);
+    downloadSection.style.display = 'block';
+
+  } catch (err) {
+    stopSpinner(convertLine, 'ERROR: ' + (err.message || 'NETWORK FAILURE').toUpperCase(), 'error');
   }
+}
 
-  function formatDuration(seconds) {
-    const s = Math.round(seconds);
-    const m = Math.floor(s / 60);
-    const rem = s % 60;
-    return m > 0 ? `${m}m ${rem}s` : `${rem}s`;
-  }
-
-  async function handleFile(file) {
-    clearStatus();
-
-    const preset = getSelected('preset-group') || 'full';
-    const speed  = getSelected('speed-group')  || '1';
-
-    addLine(`FILE: ${file.name} (${formatSize(file.size)})`);
-    addLine(`PRESET: ${preset.toUpperCase()}  SPEED: ${speed}×`);
-
-    const formData = new FormData();
-    formData.append('video', file);
-    formData.append('preset', preset);
-    formData.append('speed', speed);
-
-    addLine('UPLOADING...');
-    const convertingLine = startSpinner('CONVERTING (THIS MAY TAKE A MOMENT)');
-
-    try {
-      const response = await fetch('/convert', {
-        method: 'POST',
-        body: formData
-      });
-
-      if (!response.ok) {
-        let errMsg = 'CONVERSION FAILED';
-        try {
-          const errData = await response.json();
-          errMsg = errData.error || errMsg;
-        } catch (_) {}
-        stopSpinner(convertingLine, 'ERROR: ' + errMsg.toUpperCase(), 'error');
-        return;
-      }
-
-      const rawDuration = parseFloat(response.headers.get('X-Video-Duration') || '0');
-      const blob = await response.blob();
-
-      stopSpinner(convertingLine, 'CONVERSION COMPLETE.', 'success');
-      if (rawDuration > 0) {
-        const gifDuration = rawDuration / parseInt(speed, 10);
-        addLine(`SOURCE DURATION: ${formatDuration(rawDuration)}  →  GIF DURATION: ${formatDuration(gifDuration)}`, 'success');
-      }
-      addLine(`OUTPUT SIZE: ${formatSize(blob.size)}`, 'success');
-      addLine('DONE. GIF READY FOR DOWNLOAD.', 'success');
-
-      const url = URL.createObjectURL(blob);
-      downloadBtn.href = url;
-      downloadSection.style.display = 'block';
-
-    } catch (err) {
-      stopSpinner(convertingLine, 'ERROR: ' + (err.message || 'NETWORK FAILURE').toUpperCase(), 'error');
-    }
-  }
-
-  function formatSize(bytes) {
-    if (bytes < 1024) return bytes + ' B';
-    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-    return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-  }
-
-  // Drag-and-drop
-  dropZone.addEventListener('dragover', e => {
-    e.preventDefault();
-    dropZone.classList.add('dragover');
-  });
-
-  dropZone.addEventListener('dragleave', e => {
-    dropZone.classList.remove('dragover');
-  });
-
-  dropZone.addEventListener('drop', e => {
-    e.preventDefault();
-    dropZone.classList.remove('dragover');
-    const file = e.dataTransfer.files[0];
-    if (file) handleFile(file);
-  });
-
-  fileInput.addEventListener('change', () => {
-    if (fileInput.files[0]) {
-      handleFile(fileInput.files[0]);
-      fileInput.value = '';
-    }
-  });
+// Drag-and-drop
+dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('dragover');
+  const f = e.dataTransfer.files[0];
+  if (f) handleFile(f);
+});
+fileInput.addEventListener('change', () => {
+  if (fileInput.files[0]) { handleFile(fileInput.files[0]); fileInput.value = ''; }
+});
 </script>
 </body>
 </html>
