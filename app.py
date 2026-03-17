@@ -36,15 +36,6 @@ def index():
 
 @app.route('/convert', methods=['POST'])
 def convert():
-    if 'video' not in request.files:
-        return jsonify({'error': 'No file provided'}), 400
-
-    file = request.files['video']
-    if file.filename == '':
-        return jsonify({'error': 'No file selected'}), 400
-
-    filename = secure_filename(file.filename) or 'upload'
-
     preset_name = request.form.get('preset', 'full').lower()
     preset = PRESETS.get(preset_name, PRESETS['full'])
     max_size = preset['max_size']
@@ -56,34 +47,46 @@ def convert():
     except ValueError:
         speed = 1
 
+    # Resolve input: URL takes priority over file upload
+    url = request.form.get('url', '').strip()
+    if url:
+        if not url.startswith(('http://', 'https://')):
+            return jsonify({'error': 'URL must begin with http:// or https://'}), 400
+        input_source = url
+        save_file = None
+    elif 'video' in request.files and request.files['video'].filename:
+        save_file = request.files['video']
+        input_source = None  # set after saving
+    else:
+        return jsonify({'error': 'Provide a video file or a URL'}), 400
+
     with tempfile.TemporaryDirectory() as tmpdir:
-        input_path = os.path.join(tmpdir, filename)
         palette_path = os.path.join(tmpdir, 'palette.png')
-        output_path = os.path.join(tmpdir, 'output.gif')
+        output_path  = os.path.join(tmpdir, 'output.gif')
 
-        file.save(input_path)
+        if save_file is not None:
+            filename = secure_filename(save_file.filename) or 'upload'
+            input_source = os.path.join(tmpdir, filename)
+            save_file.save(input_source)
 
-        # Validate via ffprobe and get dimensions + duration
+        # Validate via ffprobe and read dimensions + duration
         try:
-            width, height, duration = probe_video(input_path)
+            width, height, duration = probe_video(input_source)
         except subprocess.CalledProcessError:
-            return jsonify({'error': 'File is not a valid video or format is unsupported'}), 400
+            return jsonify({'error': 'Not a valid video, format unsupported, or URL unreachable'}), 400
         except StopIteration:
-            return jsonify({'error': 'No video stream found in file'}), 400
+            return jsonify({'error': 'No video stream found'}), 400
 
         # Aspect-ratio-aware scaling
-        if height > width:
-            scale_filter = f'-1:{max_size}'
-        else:
-            scale_filter = f'{max_size}:-1'
+        scale_filter = f'-1:{max_size}' if height > width else f'{max_size}:-1'
 
-        # Speed filter: setpts shrinks timestamps, fps keeps output cadence stable
+        # Speed filter: compress timestamps so GIF plays faster
         speed_filter = f'setpts=PTS/{speed},' if speed > 1 else ''
 
         # Pass 1: palette generation
         try:
             subprocess.run([
-                'ffmpeg', '-i', input_path,
+                'ffmpeg', '-i', input_source,
                 '-vf', f'{speed_filter}fps={fps},scale={scale_filter}:flags=lanczos,palettegen=stats_mode=diff:max_colors={colors}',
                 '-y', palette_path
             ], capture_output=True, check=True)
@@ -93,7 +96,7 @@ def convert():
         # Pass 2: GIF encode
         try:
             subprocess.run([
-                'ffmpeg', '-i', input_path, '-i', palette_path,
+                'ffmpeg', '-i', input_source, '-i', palette_path,
                 '-lavfi', f'{speed_filter}fps={fps},scale={scale_filter}:flags=lanczos [x]; [x][1:v] paletteuse=dither=bayer:bayer_scale=5:diff_mode=rectangle',
                 '-y', output_path
             ], capture_output=True, check=True)

@@ -19,11 +19,11 @@ Then open `http://localhost:3000` in your browser.
 
 ## Usage
 
-1. Drag a video file onto the drop zone, or click to select one.
-2. Watch the terminal-style status panel as the file uploads and converts.
-3. Click **[ DOWNLOAD GIF ]** when conversion completes.
+**File:** Drag a video file onto the drop zone, or click to select one.
 
-Any format supported by ffmpeg works — MP4, MOV, MKV, WEBM, AVI, FLV, etc. The server validates files via `ffprobe`, not file extension.
+**URL:** Click the `[ URL ]` tab, paste any HTTP/HTTPS video URL, and press Enter or `[ CONVERT ]`. ffmpeg reads the URL directly — no intermediate download step. Works with S3, CDNs, direct links, and extensionless asset URLs.
+
+Any format supported by ffmpeg works — MP4, MOV, MKV, WEBM, AVI, FLV, etc. The server validates input via `ffprobe`, not file extension.
 
 ## Output
 
@@ -58,7 +58,8 @@ video_to_gif/
 
 **Backend (`app.py`):**
 - `GET /` serves the UI
-- `POST /convert` accepts `multipart/form-data` with fields: `video` (file), `preset` (embed/web/full), `speed` (1/2/4/8)
+- `POST /convert` accepts `multipart/form-data` with fields: `video` (file) **or** `url` (HTTP/HTTPS string), plus `preset` (embed/web/full) and `speed` (1/2/4/8)
+- URL inputs are passed directly to ffmpeg/ffprobe — no intermediate download
 - `ffprobe` probes the file to confirm it contains a video stream and reads dimensions + duration
 - Two-pass `ffmpeg` conversion: palette generation (`palettegen`) then GIF encode (`paletteuse`) for optimal color fidelity
 - Speed-up applied via `setpts=PTS/{speed}` in the filter chain

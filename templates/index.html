@@ -312,6 +312,104 @@
     box-shadow: 0 0 6px var(--green);
   }
 
+  /* ── Input mode tabs ───────────────────────────────────── */
+  .mode-tabs {
+    display: flex;
+    margin-bottom: -1px; /* merge with drop-zone/url-box border below */
+    position: relative;
+    z-index: 2;
+  }
+
+  .mode-tab {
+    padding: 0.28rem 1rem;
+    font-family: 'Courier New', monospace;
+    font-size: 0.65rem;
+    letter-spacing: 0.15em;
+    background: transparent;
+    border: 1px solid var(--green-pale);
+    color: var(--green-pale);
+    cursor: pointer;
+    transition: all 0.12s;
+    margin-right: -1px;
+  }
+
+  .mode-tab.active {
+    border-bottom-color: var(--bg);
+    color: var(--green);
+    background: rgba(0,8,2,0.92);
+    border-color: var(--green);
+    border-bottom-color: rgba(0,8,2,0.92);
+    text-shadow: 0 0 6px var(--green);
+  }
+
+  .mode-tab:not(.active):hover {
+    color: var(--green-dim);
+    border-color: var(--green-dim);
+  }
+
+  /* URL input box */
+  #url-box {
+    display: none;
+    border: 1px solid var(--green);
+    padding: 1.6rem 1.5rem;
+    background: rgba(0,255,65,0.02);
+    box-shadow: inset 0 0 16px rgba(0,255,65,0.03);
+  }
+
+  .url-row {
+    display: flex;
+    gap: 0;
+  }
+
+  #url-input {
+    flex: 1;
+    background: rgba(0,0,0,0.6);
+    border: 1px solid var(--green-dim);
+    border-right: none;
+    color: var(--green);
+    font-family: 'Courier New', monospace;
+    font-size: 0.75rem;
+    padding: 0.5rem 0.75rem;
+    outline: none;
+    caret-color: var(--green);
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+
+  #url-input::placeholder { color: var(--green-pale); }
+
+  #url-input:focus {
+    border-color: var(--green);
+    box-shadow: 0 0 8px rgba(0,255,65,0.25);
+  }
+
+  #url-submit {
+    background: transparent;
+    border: 1px solid var(--green-dim);
+    color: var(--green-dim);
+    font-family: 'Courier New', monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.12em;
+    padding: 0.5rem 1rem;
+    cursor: pointer;
+    transition: all 0.15s;
+    white-space: nowrap;
+  }
+
+  #url-submit:hover {
+    border-color: var(--green);
+    color: var(--green);
+    background: rgba(0,255,65,0.07);
+    box-shadow: 0 0 8px rgba(0,255,65,0.25);
+    text-shadow: 0 0 6px var(--green);
+  }
+
+  .url-hint {
+    font-size: 0.6rem;
+    color: var(--green-pale);
+    letter-spacing: 0.08em;
+    margin-top: 0.55rem;
+  }
+
   /* ── Option toggles ─────────────────────────────────────── */
   .option-row {
     display: flex;
@@ -488,6 +586,12 @@
 
         <hr class="divider">
 
+        <!-- Input mode tabs -->
+        <div class="mode-tabs">
+          <button class="mode-tab active" id="tab-file">[ FILE ]</button>
+          <button class="mode-tab"        id="tab-url" >[ URL  ]</button>
+        </div>
+
         <div id="drop-zone" onclick="document.getElementById('file-input').click()">
           <div class="drop-ascii">
 ┌─────────────────────────────────┐<br>
@@ -496,6 +600,15 @@
           <div class="drop-text">— OR CLICK TO BROWSE —</div>
           <div class="drop-sub">MP4 &bull; MOV &bull; MKV &bull; WEBM &bull; AVI &bull; ANY FORMAT FFMPEG SUPPORTS</div>
         </div>
+
+        <div id="url-box">
+          <div class="url-row">
+            <input id="url-input" type="url" placeholder="https://example.com/video.mp4" spellcheck="false" autocomplete="off">
+            <button id="url-submit">[ CONVERT ]</button>
+          </div>
+          <div class="url-hint">Supports any HTTP/HTTPS URL that ffmpeg can read — S3, CDN, direct links, extensionless assets</div>
+        </div>
+
         <input type="file" id="file-input" accept="video/*,.mkv,.webm,.mov,.avi,.mp4,.flv,.wmv">
 
         <hr class="divider">
@@ -622,11 +735,32 @@ tickStats();
 setInterval(tickStats, 3000);
 
 // ── App logic ────────────────────────────────────────────────
-const dropZone      = document.getElementById('drop-zone');
-const fileInput     = document.getElementById('file-input');
-const statusPanel   = document.getElementById('status-panel');
+const dropZone        = document.getElementById('drop-zone');
+const fileInput       = document.getElementById('file-input');
+const urlBox          = document.getElementById('url-box');
+const urlInput        = document.getElementById('url-input');
+const urlSubmit       = document.getElementById('url-submit');
+const tabFile         = document.getElementById('tab-file');
+const tabUrl          = document.getElementById('tab-url');
+const statusPanel     = document.getElementById('status-panel');
 const downloadSection = document.getElementById('download-section');
-const downloadBtn   = document.getElementById('download-btn');
+const downloadBtn     = document.getElementById('download-btn');
+
+// ── Mode tabs ─────────────────────────────────────────────────
+tabFile.addEventListener('click', () => {
+  tabFile.classList.add('active');
+  tabUrl.classList.remove('active');
+  dropZone.style.display = 'block';
+  urlBox.style.display = 'none';
+});
+
+tabUrl.addEventListener('click', () => {
+  tabUrl.classList.add('active');
+  tabFile.classList.remove('active');
+  dropZone.style.display = 'none';
+  urlBox.style.display = 'block';
+  urlInput.focus();
+});
 
 let spinnerInterval = null, currentSpinnerEl = null, spinIdx = 0;
 const spinChars = ['|', '/', '-', '\\'];
@@ -705,6 +839,23 @@ function fmtDuration(sec) {
   return m > 0 ? `${m}m ${r}s` : `${r}s`;
 }
 
+async function handleUrl(url) {
+  clearStatus();
+  const preset = getSelected('preset-group') || 'full';
+  const speed  = getSelected('speed-group')  || '1';
+
+  addLine(`URL: ${url}`);
+  addLine(`PRESET: ${preset.toUpperCase()}   SPEED: ${speed}×`);
+
+  const fd = new FormData();
+  fd.append('url', url);
+  fd.append('preset', preset);
+  fd.append('speed', speed);
+
+  const convertLine = startSpinner('PROBING + CONVERTING (THIS MAY TAKE A MOMENT)');
+  await runConvert(fd, convertLine, preset, speed);
+}
+
 async function handleFile(file) {
   clearStatus();
   const preset = getSelected('preset-group') || 'full';
@@ -720,7 +871,10 @@ async function handleFile(file) {
 
   addLine('UPLOADING...');
   const convertLine = startSpinner('CONVERTING (THIS MAY TAKE A MOMENT)');
+  await runConvert(fd, convertLine, preset, speed);
+}
 
+async function runConvert(fd, convertLine, preset, speed) {
   try {
     const res = await fetch('/convert', { method: 'POST', body: fd });
 
@@ -742,8 +896,8 @@ async function handleFile(file) {
     addLine(`OUTPUT SIZE: ${fmtSize(blob.size)}`, 'success');
     addLine('DONE. GIF READY FOR DOWNLOAD.', 'success');
 
-    const url = URL.createObjectURL(blob);
-    downloadBtn.setAttribute('href', url);
+    const objUrl = URL.createObjectURL(blob);
+    downloadBtn.setAttribute('href', objUrl);
     downloadSection.style.display = 'block';
 
   } catch (err) {
@@ -763,6 +917,27 @@ dropZone.addEventListener('drop', e => {
 fileInput.addEventListener('change', () => {
   if (fileInput.files[0]) { handleFile(fileInput.files[0]); fileInput.value = ''; }
 });
+
+// URL submission
+function submitUrl() {
+  const u = urlInput.value.trim();
+  if (!u) return;
+  handleUrl(u);
+}
+urlSubmit.addEventListener('click', submitUrl);
+urlInput.addEventListener('keydown', e => { if (e.key === 'Enter') submitUrl(); });
+
+// Dragging a URL onto the page auto-switches to URL mode and fills the input
+document.addEventListener('drop', e => {
+  const text = e.dataTransfer.getData('text/plain') || e.dataTransfer.getData('text/uri-list');
+  if (text && text.startsWith('http')) {
+    e.preventDefault();
+    tabUrl.click();
+    urlInput.value = text;
+    submitUrl();
+  }
+});
+document.addEventListener('dragover', e => e.preventDefault());
 </script>
 </body>
 </html>
