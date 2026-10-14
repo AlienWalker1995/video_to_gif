@@ -17,10 +17,14 @@
     --bg:        #0a0a0a;
   }
 
+  html { height: 100%; }
+
   html, body {
-    width: 100%; height: 100%;
-    overflow: hidden;
+    width: 100%;
+    overflow-x: hidden;
   }
+
+  body { min-height: 100%; }
 
   body {
     background: var(--bg);
@@ -546,6 +550,20 @@
   }
 
   .footer span { white-space: nowrap; }
+
+  /* ── Narrow screens ─────────────────────────────────────── */
+  @media (max-width: 520px) {
+    .sysbar-wide { display: none; }
+    #main { padding: 42px 0.75rem; }
+    .screen { padding: 1.25rem 1rem; }
+    .title-bar { gap: 0.4rem; }
+    .title, .title-bracket { font-size: 1.05rem; }
+    .title { letter-spacing: 0.2em; white-space: nowrap; }
+    .subtitle { letter-spacing: 0.12em; }
+    #drop-zone { padding: 1.6rem 0.75rem; }
+    .drop-ascii { font-size: 0.58rem; letter-spacing: 0; white-space: nowrap; }
+    .drop-text { letter-spacing: 0.12em; }
+  }
 </style>
 </head>
 <body>
@@ -562,12 +580,12 @@
 <div class="sysbar sysbar-top">
   <span class="dot-blink"></span>
   <span class="bright">VIDEO-TO-GIF</span>
-  <span class="sysbar-sep">║</span>
-  <span>SYS:OK</span>
-  <span class="sysbar-sep">·</span>
-  <span>FFMPEG:8.0.1</span>
-  <span class="sysbar-sep">·</span>
-  <span>PORT:3000</span>
+  <span class="sysbar-sep sysbar-wide">║</span>
+  <span class="sysbar-wide">SYS:OK</span>
+  <span class="sysbar-sep sysbar-wide">·</span>
+  <span class="sysbar-wide">FFMPEG:8.0.1</span>
+  <span class="sysbar-sep sysbar-wide">·</span>
+  <span class="sysbar-wide">PORT:3000</span>
   <span class="push">
     <span id="top-clock" class="bright">--:--:--</span>
   </span>
@@ -659,8 +677,8 @@
 <!-- Bottom system bar -->
 <div class="sysbar sysbar-bot">
   <span>LOCAL ONLY</span>
-  <span class="sysbar-sep">·</span>
-  <span>NO DATA LEAVES YOUR MACHINE</span>
+  <span class="sysbar-sep sysbar-wide">·</span>
+  <span class="sysbar-wide">NO DATA LEAVES YOUR MACHINE</span>
   <span class="push">
     <span id="mem-stat">MEM:--</span>
     <span class="sysbar-sep">·</span>
