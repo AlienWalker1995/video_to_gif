@@ -1,76 +1,115 @@
+<div align="center">
+
 # video-to-gif
 
-A lightweight, locally-hosted web service that converts video files to GIFs via drag-and-drop. Features a retro CRT/terminal aesthetic and runs on port 3000.
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
-## Requirements
+### Drop a video in, get a clean GIF out. Locally, in two passes, with no uploads to anyone.
 
-- Python 3.8+
-- `ffmpeg` and `ffprobe` installed and on your `PATH`
-- Flask 3.0+
+**A single-file Flask app with a retro CRT terminal UI. Files or URLs in, palette-optimized GIFs out, everything on your own machine.**
 
-## Setup
+![Python 3.8+](https://img.shields.io/badge/Python-3.8%2B-3776ab?style=flat-square&logo=python&logoColor=white)
+![Flask 3](https://img.shields.io/badge/Flask-3.x-000000?style=flat-square&logo=flask&logoColor=white)
+![ffmpeg](https://img.shields.io/badge/encoder-ffmpeg_two--pass-007808?style=flat-square&logo=ffmpeg&logoColor=white)
+![No CDN](https://img.shields.io/badge/frontend-vanilla_JS,_no_CDN-16a34a?style=flat-square)
+![Local only](https://img.shields.io/badge/scope-local_only-6b7280?style=flat-square)
 
-```bash
+**[Quick start](#quick-start) · [How it works](#how-it-works) · [Presets](#presets) · [HTTP API](#http-api) · [FAQ](#faq)**
+
+<img src="docs/screenshot.png" alt="video-to-gif after converting a 4 second MP4: status log shows the source and GIF duration, output size, and a download button" width="1000" />
+
+</div>
+
+---
+
+Most "video to GIF" sites want your file on their server and hand back a muddy, dithered result. video-to-gif runs on `localhost`, reads anything ffmpeg can read (including a remote URL, streamed straight into ffmpeg), and encodes with a generated per-clip palette, so colors stay faithful at a small file size.
+
+## Quick start
+
+Requirements: Python 3.8+, and `ffmpeg` + `ffprobe` on your `PATH`.
+
+```sh
+git clone https://github.com/AlienWalker1995/video_to_gif
+cd video_to_gif
 pip install -r requirements.txt
 python app.py
 ```
 
-Then open `http://localhost:3000` in your browser.
+Open **http://localhost:3000**, then either:
 
-## Usage
+- **File:** drag a video onto the drop zone, or click it to browse.
+- **URL:** switch to the `[ URL ]` tab, paste an `http://` or `https://` link, and press Enter.
 
-**File:** Drag a video file onto the drop zone, or click to select one.
+Pick a preset and a speed, and the GIF downloads straight from the page when it is ready.
 
-**URL:** Click the `[ URL ]` tab, paste any HTTP/HTTPS video URL, and press Enter or `[ CONVERT ]`. ffmpeg reads the URL directly — no intermediate download step. Works with S3, CDNs, direct links, and extensionless asset URLs.
+## How it works
 
-Any format supported by ffmpeg works — MP4, MOV, MKV, WEBM, AVI, FLV, etc. The server validates input via `ffprobe`, not file extension.
-
-## Output
-
-Aspect ratio is always preserved. Orientation is auto-detected — portrait videos scale on height, landscape on width.
-
-### Presets
-
-| Preset | Resolution | FPS | Colors | Best for |
-|--------|-----------|-----|--------|----------|
-| EMBED  | 240px     | 10  | 64     | Docs, Slack, email — smallest file |
-| WEB    | 360px     | 15  | 128    | Web pages, READMEs |
-| FULL   | 480px     | 15  | 256    | Best quality (default) |
-
-### Speed
-
-1×, 2×, 4×, or 8× playback speed. Speeds up the GIF output while preserving the full video content — useful for long recordings. The status panel shows both the source duration and the resulting GIF duration after conversion.
-
-- **Max upload size:** 500 MB
-- **Quality:** two-pass conversion with palette generation for optimal color fidelity
-
-## Project Structure
-
-```
-video_to_gif/
-├── app.py               # Flask backend (routes, ffprobe validation, ffmpeg conversion)
-├── templates/
-│   └── index.html       # Frontend (retro CRT UI, embedded CSS + JS, no external deps)
-└── requirements.txt     # Python dependencies (flask only)
+```mermaid
+flowchart LR
+    IN["File upload<br/>or HTTP(S) URL"] --> P["ffprobe<br/>has a video stream?<br/>width · height · duration"]
+    P --> A["Pass 1: palettegen<br/>per-clip palette"]
+    A --> B["Pass 2: paletteuse<br/>Bayer dither"]
+    B --> OUT["GIF download<br/>+ duration headers"]
 ```
 
-## How It Works
+| Step | What happens |
+|---|---|
+| **Validate** | `ffprobe` confirms the input contains a video stream. Validation is by content, never by file extension. |
+| **Scale** | Aspect ratio is always kept. Portrait clips scale on height, landscape on width, to the preset's size. |
+| **Speed** | `setpts=PTS/N` plays the whole clip 1x, 2x, 4x, or 8x faster, so long recordings become short GIFs without cutting content. |
+| **Encode** | Two passes: `palettegen` builds a palette from the clip itself, then `paletteuse` maps frames onto it. |
+| **Clean up** | Each job runs in its own `TemporaryDirectory`, removed on success or failure. |
 
-**Backend (`app.py`):**
-- `GET /` serves the UI
-- `POST /convert` accepts `multipart/form-data` with fields: `video` (file) **or** `url` (HTTP/HTTPS string), plus `preset` (embed/web/full) and `speed` (1/2/4/8)
-- URL inputs are passed directly to ffmpeg/ffprobe — no intermediate download
-- `ffprobe` probes the file to confirm it contains a video stream and reads dimensions + duration
-- Two-pass `ffmpeg` conversion: palette generation (`palettegen`) then GIF encode (`paletteuse`) for optimal color fidelity
-- Speed-up applied via `setpts=PTS/{speed}` in the filter chain
-- Uses `tempfile.TemporaryDirectory()` for automatic cleanup on success or error
-- Returns the GIF as a file download with `X-Video-Duration` and `X-Video-Speed` headers, or JSON `{"error": "..."}` on failure
+URL inputs are handed to ffmpeg directly, with no intermediate download step, which works for S3, CDNs, and extensionless asset links.
 
-**Frontend (`templates/index.html`):**
-- Vanilla JS, no external CDN dependencies
-- Preset selector (EMBED / WEB / FULL) and speed selector (1× / 2× / 4× / 8×) with retro toggle buttons
-- Drag-and-drop and file picker both feed the same `fetch('/convert')` handler
-- ASCII spinner (`|/-\`) animates while the request is in-flight
-- On success: displays source duration, GIF duration (after speed adjustment), and output file size
-- On success, `URL.createObjectURL(blob)` offers the GIF for download without a second round-trip
-- Errors from the server are displayed in amber in the status panel
+## Presets
+
+| Preset | Long edge | FPS | Colors | Best for |
+|---|---|---|---|---|
+| `EMBED` | 240 px | 10 | 64 | Slack, email, docs: smallest file |
+| `WEB` | 360 px | 15 | 128 | Web pages and READMEs |
+| `FULL` | 480 px | 15 | 256 | Best quality (default) |
+
+Uploads are capped at **500 MB**.
+
+## HTTP API
+
+The UI is a thin client over one endpoint, so scripts can use it too.
+
+`POST /convert` (`multipart/form-data`)
+
+| Field | Values | Notes |
+|---|---|---|
+| `video` | file | Ignored when `url` is set |
+| `url` | `http://` or `https://` URL | Takes priority over `video` |
+| `preset` | `embed` · `web` · `full` | Default `full` |
+| `speed` | integer, 1 or more | Default `1`; the UI offers 1, 2, 4, 8 |
+
+Success returns `image/gif` with `X-Video-Duration` (source seconds) and `X-Video-Speed` headers. Failure returns JSON `{"error": "..."}` with a 4xx or 5xx status.
+
+```sh
+curl -F video=@clip.mp4 -F preset=web -F speed=2 http://localhost:3000/convert -o clip.gif
+```
+
+## FAQ
+
+**Does my video leave my machine?** No. Uploads go to the Flask server on `localhost` and are deleted when the job ends. URL inputs are fetched by your local ffmpeg.
+
+**Which formats work?** Anything your ffmpeg build can decode: MP4, MOV, MKV, WEBM, AVI, FLV, and more.
+
+**Why two passes?** GIFs hold 256 colors at most. A palette generated from the clip itself keeps far more color fidelity than a generic palette.
+
+**Can I expose it on my network?** It is built as a local tool: `python app.py` binds `127.0.0.1` with Flask's debug server. Put it behind a production WSGI server and an authenticating proxy before sharing it.
+
+## Project layout
+
+```
+app.py                 Flask backend: routes, ffprobe validation, two-pass ffmpeg encode
+templates/index.html   the CRT terminal UI (embedded CSS + vanilla JS, no external requests)
+requirements.txt       Python dependencies (Flask only)
+docs/screenshot.png    README screenshot
+```
+
+## License
+
+[MIT](LICENSE)
